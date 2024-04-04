@@ -72,3 +72,5 @@ def creartabla():
 
     # Imprimir la tabla
     print(tabla)
+
+creartabla()

@@ -1,4 +1,7 @@
 import csv
+from datetime import datetime, timedelta
+import pyodbc
+
 
 def ConvertirStandardTimeEnHoras(segundos):
     horas = segundos / 3600 * 1.5
@@ -11,46 +14,99 @@ def nomina():
     tiempocomida = 0.5
 
     # Columnas a extraer
-    columnas_extraer = ["# Empleado", "Nombre", "Departamento", "Linea", "Centro de Costos", "Turno", "horario_MAR", "MAR E", "MAR S", "MAR Horas", "INC MAR"]
+    columnas_extraer = ["# Empleado", "Nombre", "Departamento", "Linea", "Centro de Costos", "Turno"]
 
-    # Leer el archivo de entrada y extraer las columnas especificadas
+    dias = [["horario_LUN", "LUN E", "LUN S", "LUN Horas", "INC LUN"],
+            ["horario_MAR", "MAR E", "MAR S", "MAR Horas", "INC MAR"],
+            ["horario_MIE", "MIE E", "MIE S", "MIE Horas", "INC MIE"],
+            ["horario_JUE", "JUE E", "JUE S", "JUE Horas", "INC JUE"],
+            ["horario_VIE", "VIE E", "VIE S", "VIE Horas", "INC VIE"],
+            ["horario_SAB", "SAB E", "SAB S", "SAB Horas", "INC SAB"],
+            ["horario_DOM", "DOM E", "DOM S", "DOM Horas", "INC DOM"]]
+
+    # Obtener la fecha actual
+    fecha_actual = datetime.now().date()
+
+    # Obtener el día de la semana (0: lunes, 1: martes, ..., 6: domingo)
+    dia_semana = fecha_actual.weekday()
+
     informacion_empleados = []
-    with open(archivo_entrada, "r") as file:
-        reader = csv.DictReader(file)
-        for row in reader:
-            incidencias = row["INC MAR"]
-            mar_horas = float(row["MAR Horas"]) if row["MAR Horas"] else 0.0
 
-            departamento = row["Departamento"]
-            arranque = 0.25 if "Inyección" in departamento else 0
 
-            if incidencias:
-                mar_horas += tiempocomida + arranque
-            else: 
-                mar_horas = 0
+    for i in range(7):
+        print(i)
+        # Calcular la diferencia de días para llegar al lunes
+        dias_diferencia = dia_semana - i  # 1 representa el martes
 
-            HorasTotales = row["MAR Horas"]
-            presencia = 0 if HorasTotales == 0 else (float(HorasTotales) - tiempocomida - arranque + mar_horas)
+        # Calcular la fecha del lunes
+        fecha_registro = fecha_actual - timedelta(days=dias_diferencia)
 
-            empleado = {columna: row[columna] for columna in columnas_extraer}
-            empleado["Incidencias"] = mar_horas
-            empleado["Arranque"] = arranque
-            empleado["Presencia"] = presencia
-            informacion_empleados.append(empleado)
+        # Leer el archivo de entrada y extraer las columnas especificadas
+        with open(archivo_entrada, "r") as file:
+            reader = csv.DictReader(file)
+            for row in reader:
+                incidencias = row[dias[i][4]]
+                horas = float(row[dias[i][3]]) if row[dias[i][3]] else 0
+
+                departamento = row["Departamento"]
+                arranque = 0.25 if "Inyección" in departamento else 0
+
+                if incidencias:
+                    horas = tiempocomida + arranque
+                else: 
+                    horas = 0
+
+                HorasTotales = row[dias[i][3]]
+                presencia = 0 if HorasTotales == 0 else (float(HorasTotales) - tiempocomida - arranque + horas)
+
+                empleado = {columna: row[columna] for columna in columnas_extraer}
+                empleado["Incidencia"] = incidencias
+                empleado["Horas trabajadas"] = HorasTotales
+                empleado["Tiempo de incidencias"] = horas
+                empleado["Arranque"] = arranque
+                empleado["Presencia"] = presencia
+                empleado["Fecha"] = fecha_registro
+                informacion_empleados.append(empleado)
+
+                #print(empleado)
 
     # Escribir la información extraída en un nuevo archivo CSV
-    columnas_extraer.append("Incidencias")
+    columnas_extraer.append("Incidencia")
+    columnas_extraer.append("Horas trabajadas")
+    columnas_extraer.append("Tiempo de incidencias")
     columnas_extraer.append("Arranque")
     columnas_extraer.append("Presencia")
-    with open(archivo_salida, "w", newline="") as file:
-        writer = csv.DictWriter(file, fieldnames=columnas_extraer)
-        writer.writeheader()
-        writer.writerows(informacion_empleados)
+    columnas_extraer.append("Fecha")
+
+    # #CSV
+    # with open(archivo_salida, "w", newline="") as file:
+    #     writer = csv.DictWriter(file, fieldnames=columnas_extraer)
+    #     writer.writeheader()
+    #     writer.writerows(informacion_empleados)
+
+    #Access
+
+    # Establecer la conexión con la base de datos de Access
+    conn = pyodbc.connect(r'Driver={Microsoft Access Driver (*.mdb, *.accdb)};DBQ=C:\Users\mariabar\OneDrive - Magna\Direct Labor Efficency\DLE.accdb;')
+
+    # Crear un cursor para ejecutar consultas SQL
+    cursor = conn.cursor()
+
+    # query = "CREATE TABLE IF NOT EXISTS Nomina ([ID Empleado] TEXT, [Nombre] TEXT, [Departamento] TEXT, [Linea TEXT], [Centro De Costos] TEXT, [Turno] TEXT, [Incidencia] TEXT, [Horas Trabajadas] TEXT, [Tiempo de Incidencia] TEXT, [Arranque] TEXT, [Presencia] TEXT, [Fecha] TEXT)"
+
+    # # Crear la tabla en la base de datos de Access (si no existe)
+    # cursor.execute(query)
+
+    # Insertar los datos en la tabla
+    for empleado in informacion_empleados:
+        cursor.execute('INSERT INTO Nomina (ID_Empleado, Nombre, Departamento, Linea, Centro_De_Costos, Turno, Incidencia, Horas_Trabajadas, Tiempo_De_Incidencia, Arranque, Presencia, Fecha) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', (empleado['# Empleado'], empleado['Nombre'], empleado['Departamento'], empleado['Linea'], empleado['Centro de Costos'], empleado['Turno'], empleado['Incidencia'], empleado['Horas trabajadas'], empleado['Tiempo de incidencias'], empleado['Arranque'], empleado['Presencia'], empleado['Fecha']))
+
+
+    # Confirmar los cambios y cerrar la conexión
+    conn.commit()
+    conn.close()
 
     print("Información de empleados guardada en", archivo_salida)
-
-
-
 
 ######## SAP ##########
 def sap():
