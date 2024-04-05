@@ -78,12 +78,6 @@ def nomina():
     columnas_extraer.append("Presencia")
     columnas_extraer.append("Fecha")
 
-    # #CSV
-    # with open(archivo_salida, "w", newline="") as file:
-    #     writer = csv.DictWriter(file, fieldnames=columnas_extraer)
-    #     writer.writeheader()
-    #     writer.writerows(informacion_empleados)
-
     #Access
 
     # Establecer la conexión con la base de datos de Access
@@ -108,10 +102,12 @@ def nomina():
 
     print("Información de empleados guardada en", archivo_salida)
 
-######## SAP ##########
+########################################################### SAP ######################################
 def sap():
     archivo_entrada_sap = "assets/SAP.csv"
     archivo_entrada_estandares = "assets/Estandares.csv"
+    conexion_access = r"C:\Users\mariabar\OneDrive - Magna\Direct Labor Efficency\DLE.accdb;"
+
     archivo_salida = "conteo_material.csv"
 
     #Diccionario para almacenar los estándares de cada material
@@ -138,6 +134,10 @@ def sap():
             movement_type = row["Movement Type"]
             material = str(row["Material"])
             qty = float(row["Qty in unit of entry"])
+            local_entry_time = row["Local Entry Time"]
+            fecha_hora = datetime.strptime(local_entry_time, "%d.%m.%Y %H:%M:%S")
+            local_entry_time = fecha_hora.strftime("%d/%m/%Y")
+
 
             if movement_type in ["551", "131", "132", "552"]:
                 if material in conteo_material:
@@ -145,8 +145,6 @@ def sap():
                     #print(conteo_material)
                 else:
                     conteo_material[material] = {movement_type: qty}
-            
-            #print(conteo_material)
 
     #Obtener el total de QTY
     conteo_qty = {}
@@ -154,35 +152,41 @@ def sap():
     for clave, valor in conteo_material.items():
         suma_qty = sum(valor.values())
         conteo_qty[clave] = suma_qty
-
-    #print(conteo_qty, "\n")
         
 
     # Obtener la lista de todos los Movement Types
     movement_types = ["131", "132", "551", "552"]
 
-    # Escribir el conteo de repeticiones en un nuevo archivo CSV
-    with open(archivo_salida, "w", newline="") as file:
-        writer = csv.writer(file)
-        writer.writerow(["Dep", "Work center", "Material", "QTY", "Standard Earned Hours"] + movement_types)
-        for material, movement_counts in conteo_material.items():
-            estandar = estandares.get(material, {"Dep": "", "Work center": "", "Standard Value": ""})
-            #print(estandar)
-            dep = estandar["Dep"]
-            work_center = estandar["Work center"]
-            qtyfinal = str(conteo_qty.get(material, {"valor": ""}))
-            if estandar["Standard Value"] != "":
-                valor_sin_coma = estandar["Standard Value"].replace(',', '')  # Eliminar la coma del valor
-                seh = ConvertirStandardTimeEnHoras(float(valor_sin_coma)) * float(qtyfinal)
-                seh = round(seh,2)
-            else:
-                seh = 0.0  # O cualquier otro valor predeterminado que desees asignar
+    # Crear la conexión a la base de datos de Access
+    conn = pyodbc.connect(r"Driver={Microsoft Access Driver (*.mdb, *.accdb)};DBQ=" + conexion_access)
+    cursor = conn.cursor()
 
-            row = [dep, work_center, material, qtyfinal, seh]
-            #print (row)
-            for movement_type in movement_types:
-                count = movement_counts.get(movement_type, 0)
-                row.append(count)
-            writer.writerow(row)
+    # Insertar los datos en la tabla de Access
+    for material, movement_counts in conteo_material.items():
+        estandar = estandares.get(material, {"Dep": "", "Work center": "", "Standard Value": ""})
+        dep = estandar["Dep"]
+        work_center = estandar["Work center"]
+        qtyfinal = str(conteo_qty.get(material, {"valor": ""}))
+        if estandar["Standard Value"] != "":
+            valor_sin_coma = estandar["Standard Value"].replace(',', '')  # Eliminar la coma del valor
+            seh = ConvertirStandardTimeEnHoras(float(valor_sin_coma)) * float(qtyfinal)
+            seh = round(seh, 2)
+        else:
+            seh = 0.0  # O cualquier otro valor predeterminado que desees asignar
+
+        id = str(material) +  "" + str(local_entry_time).replace("/", "-")
+        row = [id, dep, work_center, material, qtyfinal, seh, local_entry_time]
+        for movement_type in movement_types:
+            count = movement_counts.get(movement_type, 0)
+            row.append(count)
+
+        # Insertar la fila en la tabla de Access
+        cursor.execute("INSERT INTO SAP (ID, Departament, Machine, Material, QTY_In_Unit_Of_Entry, Standard_earned_hours, Local_Time_Entry, Movement_type_131, Movement_type_132, Movement_type_551, Movement_type_552) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", row)
+
+    # Guardar los cambios y cerrar la conexión
+    conn.commit()
+    conn.close()
 
     print("Conteo de repeticiones guardado en", archivo_salida)
+
+sap()
