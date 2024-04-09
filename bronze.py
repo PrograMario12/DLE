@@ -123,7 +123,6 @@ def sap():
             standard_value = row["Standard Value"]
             estandares[material] = {"Dep": area, "Work center": work_center, "Standard Value": standard_value}
 
-
     # Diccionario para almacenar el conteo de repeticiones
     conteo_material = {}
 
@@ -189,4 +188,4 @@ def sap():
 
     print("Conteo de repeticiones guardado en", archivo_salida)
 
-sap()
+#sap()
